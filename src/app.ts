@@ -3,6 +3,7 @@
 const googleAnalyticsId = "G-ZKTPLMMFDQ";
 
 type InputKey = "left" | "right" | "accelerate" | "brake";
+type AppPhase = "menu" | "name" | "countdown" | "racing" | "paused";
 
 interface InputState {
   left: boolean;
@@ -37,6 +38,13 @@ const carColors = ["#ff3b3b", "#ffd43b", "#3fd5ff", "#8cff5a", "#f65dff"] as con
 
 interface AppElements {
   canvas: HTMLCanvasElement;
+  screenLayer: HTMLElement;
+  menuScreen: HTMLElement;
+  driverForm: HTMLFormElement;
+  driverNameInput: HTMLInputElement;
+  countdownScreen: HTMLElement;
+  countdownValue: HTMLElement;
+  playNowButton: HTMLButtonElement;
   speedValue: HTMLElement;
   damageValue: HTMLElement;
   distanceValue: HTMLElement;
@@ -170,6 +178,13 @@ function getElement<T extends Element>(selector: string, type: { new (): T }): T
 function getElements(): AppElements {
   return {
     canvas: getElement("#race-canvas", HTMLCanvasElement),
+    screenLayer: getElement("#screen-layer", HTMLElement),
+    menuScreen: getElement("#menu-screen", HTMLElement),
+    driverForm: getElement("#driver-form", HTMLFormElement),
+    driverNameInput: getElement("#driver-name", HTMLInputElement),
+    countdownScreen: getElement("#countdown-screen", HTMLElement),
+    countdownValue: getElement("#countdown-value", HTMLElement),
+    playNowButton: getElement("#play-now", HTMLButtonElement),
     speedValue: getElement("#speed-value", HTMLElement),
     damageValue: getElement("#damage-value", HTMLElement),
     distanceValue: getElement("#distance-value", HTMLElement),
@@ -301,8 +316,76 @@ function initializeApp() {
 
   const input: InputState = { left: false, right: false, accelerate: false, brake: false };
   let state = createInitialRaceState();
-  let running = true;
+  let phase: AppPhase = "menu";
+  let driverName = "";
+  let countdownTimer: number | undefined;
   let lastFrame = performance.now();
+
+  function clearInput() {
+    input.left = false;
+    input.right = false;
+    input.accelerate = false;
+    input.brake = false;
+  }
+
+  function showScreen(screen: "menu" | "name" | "countdown" | "race") {
+    elements.menuScreen.hidden = screen !== "menu";
+    elements.driverForm.hidden = screen !== "name";
+    elements.countdownScreen.hidden = screen !== "countdown";
+    elements.screenLayer.hidden = screen === "race";
+  }
+
+  function clearCountdown() {
+    if (countdownTimer !== undefined) {
+      window.clearInterval(countdownTimer);
+      countdownTimer = undefined;
+    }
+  }
+
+  function goToMenu() {
+    clearCountdown();
+    clearInput();
+    state = createInitialRaceState();
+    phase = "menu";
+    elements.startButton.textContent = "Play Now";
+    elements.pauseButton.textContent = "Pause";
+    showScreen("menu");
+  }
+
+  function goToNameEntry() {
+    clearCountdown();
+    clearInput();
+    phase = "name";
+    elements.startButton.textContent = "Play Now";
+    elements.pauseButton.textContent = "Pause";
+    showScreen("name");
+    elements.driverNameInput.focus();
+  }
+
+  function beginCountdown() {
+    clearCountdown();
+    clearInput();
+    state = createInitialRaceState();
+    phase = "countdown";
+    let count = 3;
+    elements.countdownValue.textContent = String(count);
+    elements.startButton.textContent = "Restart";
+    elements.pauseButton.textContent = "Pause";
+    showScreen("countdown");
+
+    countdownTimer = window.setInterval(() => {
+      count -= 1;
+      if (count > 0) {
+        elements.countdownValue.textContent = String(count);
+        return;
+      }
+
+      clearCountdown();
+      phase = "racing";
+      lastFrame = performance.now();
+      showScreen("race");
+    }, 1000);
+  }
 
   function resizeCanvas() {
     const ratio = window.devicePixelRatio || 1;
@@ -339,17 +422,42 @@ function initializeApp() {
     elements.speedValue.textContent = `${Math.round(state.speed)} mph`;
     elements.damageValue.textContent = `${Math.round(state.damage)}%`;
     elements.distanceValue.textContent = `${(state.distance / 1000).toFixed(2)} mi`;
-    elements.positionValue.textContent = state.damage >= 100 ? "Wrecked" : running ? "Racing" : "Paused";
+    elements.positionValue.textContent =
+      state.damage >= 100
+        ? "Wrecked"
+        : phase === "racing"
+          ? driverName
+            ? `${driverName} Racing`
+            : "Racing"
+          : phase === "paused"
+            ? "Paused"
+            : phase === "countdown"
+              ? "Ready"
+              : "Menu";
     elements.scoreValue.textContent = String(state.score).padStart(5, "0");
-    elements.statusText.textContent = state.damage >= 100 ? "Race over. Restart to run again." : "Arrow keys or WASD.";
+    elements.statusText.textContent =
+      state.damage >= 100
+        ? "Race over. Restart to run again."
+        : phase === "racing"
+          ? "Arrow keys or WASD."
+          : phase === "paused"
+            ? "Paused."
+            : phase === "countdown"
+              ? "Race starts after countdown."
+              : "Click Play Now.";
   }
 
   function frame(now: number) {
     const deltaSeconds = (now - lastFrame) / 1000;
     lastFrame = now;
 
-    if (running && state.damage < 100) {
+    if (phase === "racing" && state.damage < 100) {
       state = stepRace(state, input, deltaSeconds);
+    }
+
+    if (state.damage >= 100 && phase === "racing") {
+      phase = "paused";
+      clearInput();
     }
 
     renderRace(renderingContext, elements.canvas, state);
@@ -358,15 +466,41 @@ function initializeApp() {
   }
 
   elements.startButton.addEventListener("click", () => {
-    state = createInitialRaceState();
-    running = true;
-    elements.startButton.textContent = "Restart";
-    elements.pauseButton.textContent = "Pause";
+    if (phase === "menu" || phase === "name") {
+      goToNameEntry();
+      return;
+    }
+
+    beginCountdown();
+  });
+
+  elements.playNowButton.addEventListener("click", goToNameEntry);
+
+  elements.driverForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const name = elements.driverNameInput.value.trim();
+    if (!name) {
+      elements.driverNameInput.focus();
+      return;
+    }
+
+    driverName = name;
+    beginCountdown();
   });
 
   elements.pauseButton.addEventListener("click", () => {
-    running = !running;
-    elements.pauseButton.textContent = running ? "Pause" : "Resume";
+    if (phase === "racing") {
+      phase = "paused";
+      clearInput();
+      elements.pauseButton.textContent = "Resume";
+      return;
+    }
+
+    if (phase === "paused" && state.damage < 100) {
+      phase = "racing";
+      lastFrame = performance.now();
+      elements.pauseButton.textContent = "Pause";
+    }
   });
 
   window.addEventListener("keydown", (event) => {
@@ -379,6 +513,7 @@ function initializeApp() {
   window.addEventListener("resize", resizeCanvas);
 
   resizeCanvas();
+  goToMenu();
   renderStats();
   requestAnimationFrame(frame);
 }
