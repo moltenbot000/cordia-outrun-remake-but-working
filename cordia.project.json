@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "generatedBy": "cordia",
+  "updatedAt": "2026-05-31T21:46:05.208Z",
+  "project": {
+    "id": "outrun-remake-but-working",
+    "handle": "outrun-remake-but-working",
+    "title": "OUTRUN REMAKE BUT WORKING?!?!?!",
+    "summary": "Build me the OUTRUN racing sega game, it should have a drivers POV and the user driver is racing other cars. It also has the driving stats to the side of the page, like the speed, damage, etc",
+    "url": "https://cordia.molten.bot/project/outrun-remake-but-working"
+  },
+  "repo": {
+    "owner": "moltenbot000",
+    "name": "cordia-outrun-remake-but-working",
+    "fullName": "moltenbot000/cordia-outrun-remake-but-working"
+  }
+}
