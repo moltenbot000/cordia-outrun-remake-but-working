@@ -1,67 +1,86 @@
 // Google Analytics default capture for this template.
 // Future LLM edits: do not remove this gtag setup unless replacing it with equivalent page analytics capture.
 const googleAnalyticsId = "G-ZKTPLMMFDQ";
-const storageKey = "cordia-template-state";
-function createItem(text, done, idFactory) {
-    return { id: idFactory(), text, done };
+const maxSpeed = 218;
+const laneCenters = [-0.62, 0, 0.62];
+const carColors = ["#ff3b3b", "#ffd43b", "#3fd5ff", "#8cff5a", "#f65dff"];
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
 }
-export function createDefaultState(idFactory = () => crypto.randomUUID()) {
+function wrapOpponent(car, index, distance) {
+    const lane = laneCenters[(index + Math.floor(distance / 180)) % laneCenters.length] ?? 0;
+    const color = carColors[(index + Math.floor(distance / 260)) % carColors.length] ?? "#ff3b3b";
     return {
-        appName: "Cordia",
-        theme: "system",
-        items: [
-            createItem("Replace starter content", false, idFactory),
-            createItem("Add app-specific data model", false, idFactory),
-            createItem("Deploy public folder to Cloudflare Pages", true, idFactory),
+        ...car,
+        lane,
+        color,
+        y: -0.34 - index * 0.3,
+        passed: false,
+    };
+}
+export function createInitialRaceState() {
+    return {
+        speed: 0,
+        distance: 0,
+        damage: 0,
+        position: 0,
+        score: 0,
+        time: 0,
+        curve: 0,
+        collisionCooldown: 0,
+        opponents: [
+            { id: 1, lane: -0.62, y: -0.2, color: "#ff3b3b", passed: false },
+            { id: 2, lane: 0.62, y: -0.58, color: "#ffd43b", passed: false },
+            { id: 3, lane: 0, y: -0.94, color: "#3fd5ff", passed: false },
         ],
     };
 }
-function isTheme(value) {
-    return value === "system" || value === "light" || value === "dark";
-}
-function isItem(value) {
-    if (!value || typeof value !== "object")
-        return false;
-    const item = value;
-    return (typeof item.id === "string" &&
-        typeof item.text === "string" &&
-        typeof item.done === "boolean");
-}
-export function parseStoredState(storedState, defaultState) {
-    if (!storedState)
-        return defaultState;
-    try {
-        const parsed = JSON.parse(storedState);
-        return {
-            appName: typeof parsed.appName === "string" ? parsed.appName : defaultState.appName,
-            theme: isTheme(parsed.theme) ? parsed.theme : defaultState.theme,
-            items: Array.isArray(parsed.items) && parsed.items.every(isItem) ? parsed.items : defaultState.items,
+export function stepRace(state, input, deltaSeconds) {
+    const dt = clamp(deltaSeconds, 0, 0.05);
+    const acceleration = input.accelerate ? 120 : -28;
+    const braking = input.brake ? 170 : 0;
+    const damageDrag = state.damage * 0.55;
+    const speed = clamp(state.speed + (acceleration - braking - damageDrag) * dt, 0, maxSpeed);
+    const steer = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+    const position = clamp(state.position + steer * (0.95 + speed / maxSpeed) * dt, -1, 1);
+    const distance = state.distance + speed * dt * 0.42;
+    const curve = Math.sin(distance / 150) * 0.38 + Math.sin(distance / 410) * 0.2;
+    let damage = state.damage;
+    let score = state.score + Math.floor(speed * dt * 4);
+    let collisionCooldown = Math.max(0, state.collisionCooldown - dt);
+    const opponents = state.opponents.map((car, index) => {
+        let nextCar = {
+            ...car,
+            y: car.y + (0.12 + speed / 260) * dt,
         };
-    }
-    catch {
-        return defaultState;
-    }
-}
-export function updateItem(state, id, patch) {
+        if (!nextCar.passed && nextCar.y > 1.05) {
+            nextCar = { ...nextCar, passed: true };
+            score += 350;
+        }
+        if (nextCar.y > 1.25) {
+            return wrapOpponent(nextCar, index, distance);
+        }
+        if (collisionCooldown === 0 &&
+            nextCar.y > 0.76 &&
+            nextCar.y < 0.98 &&
+            Math.abs(nextCar.lane - position) < 0.32) {
+            damage = clamp(damage + 18, 0, 100);
+            collisionCooldown = 0.8;
+            score = Math.max(0, score - 250);
+        }
+        return nextCar;
+    });
     return {
-        ...state,
-        items: state.items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+        speed,
+        distance,
+        damage,
+        position,
+        score,
+        time: state.time + dt,
+        curve,
+        collisionCooldown,
+        opponents,
     };
-}
-export function removeItem(state, id) {
-    return {
-        ...state,
-        items: state.items.filter((item) => item.id !== id),
-    };
-}
-export function addItem(state, text, idFactory = () => crypto.randomUUID()) {
-    return {
-        ...state,
-        items: [createItem(text, false, idFactory), ...state.items],
-    };
-}
-export function clearDoneItems(state) {
-    return { ...state, items: state.items.filter((item) => !item.done) };
 }
 function initializeGoogleAnalytics() {
     const googleTagScript = document.createElement("script");
@@ -84,117 +103,186 @@ function getElement(selector, type) {
 }
 function getElements() {
     return {
-        appNameInput: getElement("#app-name", HTMLInputElement),
-        clearItemsButton: getElement("#clear-items", HTMLButtonElement),
-        itemCount: getElement("#item-count", HTMLElement),
-        itemForm: getElement("#item-form", HTMLFormElement),
-        itemInput: getElement("#item-input", HTMLInputElement),
-        itemList: getElement("#item-list", HTMLUListElement),
-        navLinks: document.querySelectorAll(".nav a"),
-        saveState: getElement("#save-state", HTMLElement),
-        themeSelect: getElement("#theme-select", HTMLSelectElement),
-        title: getElement(".topbar h1", HTMLHeadingElement),
+        canvas: getElement("#race-canvas", HTMLCanvasElement),
+        speedValue: getElement("#speed-value", HTMLElement),
+        damageValue: getElement("#damage-value", HTMLElement),
+        distanceValue: getElement("#distance-value", HTMLElement),
+        positionValue: getElement("#position-value", HTMLElement),
+        scoreValue: getElement("#score-value", HTMLElement),
+        startButton: getElement("#start-race", HTMLButtonElement),
+        pauseButton: getElement("#pause-race", HTMLButtonElement),
+        statusText: getElement("#status-text", HTMLElement),
     };
+}
+function drawCar(context, x, y, width, height, color) {
+    context.fillStyle = "#111827";
+    context.fillRect(x - width * 0.47, y + height * 0.28, width * 0.94, height * 0.2);
+    context.fillStyle = color;
+    context.beginPath();
+    context.moveTo(x - width * 0.5, y + height * 0.36);
+    context.lineTo(x - width * 0.35, y - height * 0.36);
+    context.lineTo(x + width * 0.35, y - height * 0.36);
+    context.lineTo(x + width * 0.5, y + height * 0.36);
+    context.closePath();
+    context.fill();
+    context.fillStyle = "#bff3ff";
+    context.fillRect(x - width * 0.23, y - height * 0.2, width * 0.46, height * 0.22);
+    context.fillStyle = "#fff7a6";
+    context.fillRect(x - width * 0.34, y + height * 0.15, width * 0.15, height * 0.09);
+    context.fillRect(x + width * 0.19, y + height * 0.15, width * 0.15, height * 0.09);
+}
+function renderRace(context, canvas, state) {
+    const width = canvas.width;
+    const height = canvas.height;
+    const horizon = height * 0.38;
+    const roadBottom = height * 0.98;
+    const center = width * 0.5;
+    const curveShift = state.curve * width * 0.12;
+    context.clearRect(0, 0, width, height);
+    const skyGradient = context.createLinearGradient(0, 0, 0, horizon);
+    skyGradient.addColorStop(0, "#12002b");
+    skyGradient.addColorStop(0.5, "#ff3a88");
+    skyGradient.addColorStop(1, "#ffb443");
+    context.fillStyle = skyGradient;
+    context.fillRect(0, 0, width, horizon);
+    context.fillStyle = "#ffe45e";
+    context.beginPath();
+    context.arc(center + width * 0.22, horizon * 0.72, width * 0.09, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#241047";
+    context.beginPath();
+    context.moveTo(0, horizon);
+    context.lineTo(width * 0.18, horizon * 0.62);
+    context.lineTo(width * 0.38, horizon);
+    context.lineTo(width * 0.56, horizon * 0.58);
+    context.lineTo(width * 0.78, horizon);
+    context.lineTo(width, horizon * 0.68);
+    context.lineTo(width, horizon);
+    context.closePath();
+    context.fill();
+    context.fillStyle = "#e85b9a";
+    context.fillRect(0, horizon, width, height - horizon);
+    context.fillStyle = "#1c1b28";
+    context.beginPath();
+    context.moveTo(center - width * 0.08 + curveShift * 0.25, horizon);
+    context.lineTo(center + width * 0.08 + curveShift * 0.25, horizon);
+    context.lineTo(width * 0.9 - curveShift, roadBottom);
+    context.lineTo(width * 0.1 - curveShift, roadBottom);
+    context.closePath();
+    context.fill();
+    context.strokeStyle = "#fff7a6";
+    context.lineWidth = Math.max(2, width * 0.006);
+    context.setLineDash([height * 0.05, height * 0.04]);
+    [-0.32, 0.32].forEach((laneOffset) => {
+        context.beginPath();
+        context.moveTo(center + laneOffset * width * 0.08 + curveShift * 0.25, horizon);
+        context.lineTo(center + laneOffset * width * 0.78 - curveShift, roadBottom);
+        context.stroke();
+    });
+    context.setLineDash([]);
+    context.strokeStyle = "#43f5ff";
+    context.lineWidth = Math.max(4, width * 0.011);
+    context.beginPath();
+    context.moveTo(center - width * 0.08 + curveShift * 0.25, horizon);
+    context.lineTo(width * 0.1 - curveShift, roadBottom);
+    context.stroke();
+    context.beginPath();
+    context.moveTo(center + width * 0.08 + curveShift * 0.25, horizon);
+    context.lineTo(width * 0.9 - curveShift, roadBottom);
+    context.stroke();
+    state.opponents
+        .filter((car) => car.y > -0.1 && car.y < 1.12)
+        .sort((a, b) => a.y - b.y)
+        .forEach((car) => {
+        const perspective = car.y * car.y;
+        const roadWidth = width * (0.08 + perspective * 0.78);
+        const y = horizon + (roadBottom - horizon) * perspective;
+        const x = center + curveShift * (1 - car.y) + car.lane * roadWidth * 0.42 - state.curve * width * 0.11;
+        const carWidth = width * (0.035 + perspective * 0.09);
+        drawCar(context, x, y, carWidth, carWidth * 1.55, car.color);
+    });
+    drawCar(context, center + state.position * width * 0.26, height * 0.83, width * 0.17, width * 0.18, "#24f0ff");
 }
 function initializeApp() {
     initializeGoogleAnalytics();
-    const defaultState = createDefaultState();
     const elements = getElements();
-    let state = parseStoredState(localStorage.getItem(storageKey), defaultState);
-    let saveTimer;
-    function saveState() {
-        localStorage.setItem(storageKey, JSON.stringify(state));
-        elements.saveState.textContent = "Saved locally";
-        window.clearTimeout(saveTimer);
-        saveTimer = window.setTimeout(() => {
-            elements.saveState.textContent = "Changes autosave";
-        }, 1600);
+    const context = elements.canvas.getContext("2d");
+    if (!context) {
+        throw new Error("Canvas rendering context unavailable");
     }
-    function applyTheme() {
-        document.documentElement.dataset.theme = state.theme;
+    const renderingContext = context;
+    const input = { left: false, right: false, accelerate: false, brake: false };
+    let state = createInitialRaceState();
+    let running = true;
+    let lastFrame = performance.now();
+    function resizeCanvas() {
+        const ratio = window.devicePixelRatio || 1;
+        const { width, height } = elements.canvas.getBoundingClientRect();
+        elements.canvas.width = Math.floor(width * ratio);
+        elements.canvas.height = Math.floor(height * ratio);
+        renderingContext.setTransform(1, 0, 0, 1, 0, 0);
+        renderRace(renderingContext, elements.canvas, state);
     }
-    function renderItems() {
-        elements.itemList.replaceChildren();
-        if (state.items.length === 0) {
-            const emptyState = document.createElement("p");
-            emptyState.className = "empty-state";
-            emptyState.textContent = "No items yet. Add one to start shaping this template.";
-            elements.itemList.append(emptyState);
-            return;
+    function setInput(key, value) {
+        const keyMap = {
+            ArrowLeft: "left",
+            a: "left",
+            A: "left",
+            ArrowRight: "right",
+            d: "right",
+            D: "right",
+            ArrowUp: "accelerate",
+            w: "accelerate",
+            W: "accelerate",
+            ArrowDown: "brake",
+            s: "brake",
+            S: "brake",
+            " ": "accelerate",
+        };
+        const inputKey = keyMap[key];
+        if (inputKey) {
+            input[inputKey] = value;
         }
-        state.items.forEach((item) => {
-            const row = document.createElement("li");
-            row.className = "item-row";
-            row.dataset.done = String(item.done);
-            const checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            checkbox.checked = item.done;
-            checkbox.ariaLabel = `Mark ${item.text} complete`;
-            checkbox.addEventListener("change", () => {
-                state = updateItem(state, item.id, { done: checkbox.checked });
-                saveState();
-                render();
-            });
-            const label = document.createElement("span");
-            label.textContent = item.text;
-            const removeButton = document.createElement("button");
-            removeButton.className = "icon-button";
-            removeButton.type = "button";
-            removeButton.ariaLabel = `Remove ${item.text}`;
-            removeButton.textContent = "x";
-            removeButton.addEventListener("click", () => {
-                state = removeItem(state, item.id);
-                saveState();
-                render();
-            });
-            row.append(checkbox, label, removeButton);
-            elements.itemList.append(row);
-        });
     }
-    function render() {
-        document.title = `${state.appName} App Template`;
-        elements.title.textContent = state.appName;
-        elements.appNameInput.value = state.appName;
-        elements.themeSelect.value = state.theme;
-        elements.itemCount.textContent = String(state.items.length);
-        applyTheme();
-        renderItems();
+    function renderStats() {
+        elements.speedValue.textContent = `${Math.round(state.speed)} mph`;
+        elements.damageValue.textContent = `${Math.round(state.damage)}%`;
+        elements.distanceValue.textContent = `${(state.distance / 1000).toFixed(2)} mi`;
+        elements.positionValue.textContent = state.damage >= 100 ? "Wrecked" : running ? "Racing" : "Paused";
+        elements.scoreValue.textContent = String(state.score).padStart(5, "0");
+        elements.statusText.textContent = state.damage >= 100 ? "Race over. Restart to run again." : "Arrow keys or WASD.";
     }
-    function updateCurrentNavLink() {
-        const currentHash = window.location.hash || "#overview";
-        elements.navLinks.forEach((link) => {
-            link.setAttribute("aria-current", link.getAttribute("href") === currentHash ? "page" : "false");
-        });
+    function frame(now) {
+        const deltaSeconds = (now - lastFrame) / 1000;
+        lastFrame = now;
+        if (running && state.damage < 100) {
+            state = stepRace(state, input, deltaSeconds);
+        }
+        renderRace(renderingContext, elements.canvas, state);
+        renderStats();
+        requestAnimationFrame(frame);
     }
-    elements.itemForm.addEventListener("submit", (event) => {
-        event.preventDefault();
-        const text = elements.itemInput.value.trim();
-        if (!text)
-            return;
-        state = addItem(state, text);
-        saveState();
-        render();
-        elements.itemInput.value = "";
-        elements.itemInput.focus();
+    elements.startButton.addEventListener("click", () => {
+        state = createInitialRaceState();
+        running = true;
+        elements.startButton.textContent = "Restart";
+        elements.pauseButton.textContent = "Pause";
     });
-    elements.clearItemsButton.addEventListener("click", () => {
-        state = clearDoneItems(state);
-        saveState();
-        render();
+    elements.pauseButton.addEventListener("click", () => {
+        running = !running;
+        elements.pauseButton.textContent = running ? "Pause" : "Resume";
     });
-    elements.appNameInput.addEventListener("input", () => {
-        state = { ...state, appName: elements.appNameInput.value.trim() || "Cordia" };
-        saveState();
-        render();
+    window.addEventListener("keydown", (event) => {
+        if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "].includes(event.key)) {
+            event.preventDefault();
+        }
+        setInput(event.key, true);
     });
-    elements.themeSelect.addEventListener("change", () => {
-        state = { ...state, theme: elements.themeSelect.value };
-        saveState();
-        render();
-    });
-    window.addEventListener("hashchange", updateCurrentNavLink);
-    render();
-    updateCurrentNavLink();
+    window.addEventListener("keyup", (event) => setInput(event.key, false));
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+    renderStats();
+    requestAnimationFrame(frame);
 }
 if (typeof document !== "undefined") {
     initializeApp();
