@@ -28,6 +28,7 @@
           <div class="button-row">
             <button class="control-button primary" id="start-race" type="button">Play Now</button>
             <button class="control-button" id="pause-race" type="button">Pause</button>
+            <button class="control-button" id="full-screen" type="button" aria-pressed="false">Full Screen</button>
           </div>
         </header>
 
@@ -60,6 +61,13 @@
           height="620"
           aria-label="Driver point of view race with road traffic"
         ></canvas>
+
+        <div class="touch-controls" aria-label="Touch driving controls">
+          <button class="touch-button" type="button" data-touch-key="left" aria-label="Steer left">Left</button>
+          <button class="touch-button go" type="button" data-touch-key="accelerate" aria-label="Accelerate">Go</button>
+          <button class="touch-button" type="button" data-touch-key="brake" aria-label="Brake">Brake</button>
+          <button class="touch-button" type="button" data-touch-key="right" aria-label="Steer right">Right</button>
+        </div>
       </section>
 
       <aside class="dashboard" aria-label="Driving stats">
