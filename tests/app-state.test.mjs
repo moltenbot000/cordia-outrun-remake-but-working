@@ -1,65 +1,48 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  addItem,
-  clearDoneItems,
-  createDefaultState,
-  parseStoredState,
-  removeItem,
-  updateItem,
-} from "../public/app.js";
+import { createInitialRaceState, stepRace } from "../public/app.js";
 
-test("createDefaultState uses supplied id factory", () => {
-  let nextId = 1;
-  const state = createDefaultState(() => `item-${nextId++}`);
+const idleInput = {
+  left: false,
+  right: false,
+  accelerate: false,
+  brake: false,
+};
 
-  assert.deepEqual(
-    state.items.map((item) => item.id),
-    ["item-1", "item-2", "item-3"],
-  );
+test("createInitialRaceState starts race with traffic and clean car", () => {
+  const state = createInitialRaceState();
+
+  assert.equal(state.speed, 0);
+  assert.equal(state.damage, 0);
+  assert.equal(state.position, 0);
+  assert.equal(state.opponents.length, 3);
 });
 
-test("parseStoredState merges valid stored values with defaults", () => {
-  const defaultState = createDefaultState(() => "default-id");
-  const stored = JSON.stringify({
-    appName: "Typed Cordia",
-    theme: "dark",
-    items: [{ id: "stored-id", text: "Stored item", done: true }],
-  });
+test("stepRace accelerates and advances distance", () => {
+  const state = createInitialRaceState();
+  const next = stepRace(state, { ...idleInput, accelerate: true }, 1);
 
-  assert.deepEqual(parseStoredState(stored, defaultState), {
-    appName: "Typed Cordia",
-    theme: "dark",
-    items: [{ id: "stored-id", text: "Stored item", done: true }],
-  });
+  assert.ok(next.speed > state.speed);
+  assert.ok(next.distance > state.distance);
+  assert.ok(next.score > state.score);
 });
 
-test("parseStoredState falls back when stored JSON is invalid", () => {
-  const defaultState = createDefaultState(() => "default-id");
+test("stepRace steers within lane bounds", () => {
+  const state = { ...createInitialRaceState(), speed: 200, position: 0.98 };
+  const next = stepRace(state, { ...idleInput, right: true }, 1);
 
-  assert.equal(parseStoredState("{", defaultState), defaultState);
+  assert.equal(next.position, 1);
 });
 
-test("item reducers add, update, remove, and clear items immutably", () => {
+test("stepRace applies damage on opponent collision", () => {
   const state = {
-    appName: "Cordia",
-    theme: "system",
-    items: [
-      { id: "one", text: "One", done: false },
-      { id: "two", text: "Two", done: true },
-    ],
+    ...createInitialRaceState(),
+    speed: 100,
+    opponents: [{ id: 1, lane: 0, y: 0.82, color: "#ff3b3b", passed: false }],
   };
+  const next = stepRace(state, { ...idleInput, accelerate: true }, 0.016);
 
-  const added = addItem(state, "Three", () => "three");
-  const updated = updateItem(added, "one", { done: true });
-  const removed = removeItem(updated, "two");
-  const cleared = clearDoneItems(removed);
-
-  assert.deepEqual(added.items[0], { id: "three", text: "Three", done: false });
-  assert.equal(state.items[0].done, false);
-  assert.deepEqual(
-    cleared.items,
-    [{ id: "three", text: "Three", done: false }],
-  );
+  assert.equal(next.damage, 18);
+  assert.ok(next.collisionCooldown > 0);
 });
