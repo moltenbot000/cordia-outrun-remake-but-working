@@ -221,6 +221,96 @@ function drawCar(
   context.fillRect(x + width * 0.19, y + height * 0.15, width * 0.15, height * 0.09);
 }
 
+function drawPalmTree(context: CanvasRenderingContext2D, x: number, y: number, size: number) {
+  const trunkHeight = size * 4.2;
+  const trunkWidth = Math.max(3, size * 0.32);
+
+  context.save();
+  context.translate(x, y);
+  context.rotate(Math.sin(x) * 0.08);
+
+  context.strokeStyle = "#5b2a42";
+  context.lineWidth = trunkWidth;
+  context.beginPath();
+  context.moveTo(0, 0);
+  context.quadraticCurveTo(size * 0.18, -trunkHeight * 0.48, size * 0.08, -trunkHeight);
+  context.stroke();
+
+  context.strokeStyle = "#1ef6a7";
+  context.lineWidth = Math.max(2, size * 0.18);
+  for (let index = 0; index < 6; index += 1) {
+    const angle = -Math.PI * 0.92 + index * (Math.PI / 5);
+    context.beginPath();
+    context.moveTo(size * 0.08, -trunkHeight);
+    context.quadraticCurveTo(
+      Math.cos(angle) * size * 1.55,
+      -trunkHeight + Math.sin(angle) * size * 0.55,
+      Math.cos(angle) * size * 2.65,
+      -trunkHeight + Math.sin(angle) * size * 1.05,
+    );
+    context.stroke();
+  }
+
+  context.restore();
+}
+
+function drawRock(context: CanvasRenderingContext2D, x: number, y: number, size: number) {
+  context.fillStyle = "#5c2f67";
+  context.beginPath();
+  context.moveTo(x - size * 1.4, y);
+  context.lineTo(x - size * 0.72, y - size * 0.88);
+  context.lineTo(x + size * 0.18, y - size * 1.16);
+  context.lineTo(x + size * 1.25, y - size * 0.42);
+  context.lineTo(x + size * 1.55, y);
+  context.closePath();
+  context.fill();
+
+  context.fillStyle = "rgb(255 244 166 / 28%)";
+  context.beginPath();
+  context.moveTo(x - size * 0.56, y - size * 0.72);
+  context.lineTo(x + size * 0.12, y - size * 1.02);
+  context.lineTo(x + size * 0.58, y - size * 0.52);
+  context.closePath();
+  context.fill();
+}
+
+function drawLandmarks(
+  context: CanvasRenderingContext2D,
+  width: number,
+  horizon: number,
+  roadBottom: number,
+  center: number,
+  curveShift: number,
+  distance: number,
+) {
+  const landmarkCount = 18;
+
+  for (let index = 0; index < landmarkCount; index += 1) {
+    const progress = (distance / 54 + index / landmarkCount) % 1;
+    const perspective = progress * progress;
+    const y = horizon + (roadBottom - horizon) * perspective;
+    const side = index % 2 === 0 ? -1 : 1;
+    const topEdge = center + side * width * 0.08 + curveShift * 0.25;
+    const bottomEdge = width * (side < 0 ? 0.1 : 0.9) - curveShift;
+    const roadEdge = topEdge + (bottomEdge - topEdge) * perspective;
+    const roadsideOffset = width * (0.07 + perspective * 0.12);
+    const wobble = Math.sin(index * 12.989 + distance * 0.018) * width * 0.025 * perspective;
+    const x = roadEdge + side * roadsideOffset + wobble;
+    const size = width * (0.007 + perspective * 0.044);
+
+    context.fillStyle = "rgb(20 11 36 / 34%)";
+    context.beginPath();
+    context.ellipse(x + side * size * 0.7, y + size * 0.1, size * 1.8, size * 0.45, 0, 0, Math.PI * 2);
+    context.fill();
+
+    if (index % 3 === 1) {
+      drawRock(context, x, y, size * 1.35);
+    } else {
+      drawPalmTree(context, x, y, size);
+    }
+  }
+}
+
 function renderRace(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement, state: RaceState) {
   const width = canvas.width;
   const height = canvas.height;
@@ -257,6 +347,8 @@ function renderRace(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement
 
   context.fillStyle = "#e85b9a";
   context.fillRect(0, horizon, width, height - horizon);
+
+  drawLandmarks(context, width, horizon, roadBottom, center, curveShift, state.distance);
 
   context.fillStyle = "#1c1b28";
   context.beginPath();
