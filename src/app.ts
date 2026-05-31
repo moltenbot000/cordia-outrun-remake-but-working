@@ -1,34 +1,29 @@
 // Google Analytics default capture for this template.
 // Future LLM edits: do not remove this gtag setup unless replacing it with equivalent page analytics capture.
 const googleAnalyticsId = "G-ZKTPLMMFDQ";
-const storageKey = "cordia-template-state";
+const countdownSteps = ["3", "2", "1"] as const;
 
-type Theme = "system" | "light" | "dark";
+type Screen = "menu" | "name" | "countdown" | "race";
 
-export interface Item {
-  id: string;
-  text: string;
-  done: boolean;
+interface RaceState {
+  screen: Screen;
+  playerName: string;
+  countdownIndex: number;
 }
-
-export interface AppState {
-  appName: string;
-  theme: Theme;
-  items: Item[];
-}
-
-type ItemPatch = Partial<Pick<Item, "text" | "done">>;
 
 interface AppElements {
-  appNameInput: HTMLInputElement;
-  clearItemsButton: HTMLButtonElement;
-  itemCount: HTMLElement;
-  itemForm: HTMLFormElement;
-  itemInput: HTMLInputElement;
-  itemList: HTMLUListElement;
-  navLinks: NodeListOf<HTMLAnchorElement>;
-  saveState: HTMLElement;
-  themeSelect: HTMLSelectElement;
+  countdownNumber: HTMLElement;
+  countdownScreen: HTMLElement;
+  menuScreen: HTMLElement;
+  nameError: HTMLElement;
+  nameForm: HTMLFormElement;
+  nameInput: HTMLInputElement;
+  nameScreen: HTMLElement;
+  playButton: HTMLButtonElement;
+  raceCar: HTMLElement;
+  raceScreen: HTMLElement;
+  racerName: HTMLElement;
+  restartButton: HTMLButtonElement;
   title: HTMLHeadingElement;
 }
 
@@ -39,78 +34,20 @@ declare global {
   }
 }
 
-function createItem(text: string, done: boolean, idFactory: () => string): Item {
-  return { id: idFactory(), text, done };
+export function normalizePlayerName(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
 }
 
-export function createDefaultState(idFactory: () => string = () => crypto.randomUUID()): AppState {
+export function getCountdownValue(index: number): string {
+  return countdownSteps[index] ?? "GO";
+}
+
+export function createInitialState(): RaceState {
   return {
-    appName: "Cordia",
-    theme: "system",
-    items: [
-      createItem("Replace starter content", false, idFactory),
-      createItem("Add app-specific data model", false, idFactory),
-      createItem("Deploy public folder to Cloudflare Pages", true, idFactory),
-    ],
+    screen: "menu",
+    playerName: "",
+    countdownIndex: 0,
   };
-}
-
-function isTheme(value: unknown): value is Theme {
-  return value === "system" || value === "light" || value === "dark";
-}
-
-function isItem(value: unknown): value is Item {
-  if (!value || typeof value !== "object") return false;
-  const item = value as Record<string, unknown>;
-  return (
-    typeof item.id === "string" &&
-    typeof item.text === "string" &&
-    typeof item.done === "boolean"
-  );
-}
-
-export function parseStoredState(storedState: string | null, defaultState: AppState): AppState {
-  if (!storedState) return defaultState;
-
-  try {
-    const parsed = JSON.parse(storedState) as Record<string, unknown>;
-    return {
-      appName: typeof parsed.appName === "string" ? parsed.appName : defaultState.appName,
-      theme: isTheme(parsed.theme) ? parsed.theme : defaultState.theme,
-      items: Array.isArray(parsed.items) && parsed.items.every(isItem) ? parsed.items : defaultState.items,
-    };
-  } catch {
-    return defaultState;
-  }
-}
-
-export function updateItem(state: AppState, id: string, patch: ItemPatch): AppState {
-  return {
-    ...state,
-    items: state.items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-  };
-}
-
-export function removeItem(state: AppState, id: string): AppState {
-  return {
-    ...state,
-    items: state.items.filter((item) => item.id !== id),
-  };
-}
-
-export function addItem(
-  state: AppState,
-  text: string,
-  idFactory: () => string = () => crypto.randomUUID(),
-): AppState {
-  return {
-    ...state,
-    items: [createItem(text, false, idFactory), ...state.items],
-  };
-}
-
-export function clearDoneItems(state: AppState): AppState {
-  return { ...state, items: state.items.filter((item) => !item.done) };
 }
 
 function initializeGoogleAnalytics() {
@@ -138,15 +75,18 @@ function getElement<T extends Element>(selector: string, type: { new (): T }): T
 
 function getElements(): AppElements {
   return {
-    appNameInput: getElement("#app-name", HTMLInputElement),
-    clearItemsButton: getElement("#clear-items", HTMLButtonElement),
-    itemCount: getElement("#item-count", HTMLElement),
-    itemForm: getElement("#item-form", HTMLFormElement),
-    itemInput: getElement("#item-input", HTMLInputElement),
-    itemList: getElement("#item-list", HTMLUListElement),
-    navLinks: document.querySelectorAll<HTMLAnchorElement>(".nav a"),
-    saveState: getElement("#save-state", HTMLElement),
-    themeSelect: getElement("#theme-select", HTMLSelectElement),
+    countdownNumber: getElement("#countdown-number", HTMLElement),
+    countdownScreen: getElement("#countdown-screen", HTMLElement),
+    menuScreen: getElement("#menu-screen", HTMLElement),
+    nameError: getElement("#name-error", HTMLElement),
+    nameForm: getElement("#name-form", HTMLFormElement),
+    nameInput: getElement("#player-name", HTMLInputElement),
+    nameScreen: getElement("#name-screen", HTMLElement),
+    playButton: getElement("#play-now", HTMLButtonElement),
+    raceCar: getElement("#race-car", HTMLElement),
+    raceScreen: getElement("#race-screen", HTMLElement),
+    racerName: getElement("#racer-name", HTMLElement),
+    restartButton: getElement("#restart-race", HTMLButtonElement),
     title: getElement(".topbar h1", HTMLHeadingElement),
   };
 }
@@ -154,119 +94,89 @@ function getElements(): AppElements {
 function initializeApp() {
   initializeGoogleAnalytics();
 
-  const defaultState = createDefaultState();
   const elements = getElements();
-  let state = parseStoredState(localStorage.getItem(storageKey), defaultState);
-  let saveTimer: number | undefined;
+  let state = createInitialState();
+  let countdownTimer: number | undefined;
 
-  function saveState() {
-    localStorage.setItem(storageKey, JSON.stringify(state));
-    elements.saveState.textContent = "Saved locally";
-    window.clearTimeout(saveTimer);
-    saveTimer = window.setTimeout(() => {
-      elements.saveState.textContent = "Changes autosave";
-    }, 1600);
+  function setScreen(screen: Screen) {
+    state = { ...state, screen };
+    render();
   }
 
-  function applyTheme() {
-    document.documentElement.dataset.theme = state.theme;
+  function stopCountdown() {
+    window.clearTimeout(countdownTimer);
+    countdownTimer = undefined;
   }
 
-  function renderItems() {
-    elements.itemList.replaceChildren();
+  function startCountdown() {
+    stopCountdown();
+    state = { ...state, screen: "countdown", countdownIndex: 0 };
+    render();
 
-    if (state.items.length === 0) {
-      const emptyState = document.createElement("p");
-      emptyState.className = "empty-state";
-      emptyState.textContent = "No items yet. Add one to start shaping this template.";
-      elements.itemList.append(emptyState);
-      return;
-    }
+    countdownTimer = window.setInterval(() => {
+      const nextIndex = state.countdownIndex + 1;
+      if (nextIndex >= countdownSteps.length) {
+        stopCountdown();
+        setScreen("race");
+        return;
+      }
 
-    state.items.forEach((item) => {
-      const row = document.createElement("li");
-      row.className = "item-row";
-      row.dataset.done = String(item.done);
-
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = item.done;
-      checkbox.ariaLabel = `Mark ${item.text} complete`;
-      checkbox.addEventListener("change", () => {
-        state = updateItem(state, item.id, { done: checkbox.checked });
-        saveState();
-        render();
-      });
-
-      const label = document.createElement("span");
-      label.textContent = item.text;
-
-      const removeButton = document.createElement("button");
-      removeButton.className = "icon-button";
-      removeButton.type = "button";
-      removeButton.ariaLabel = `Remove ${item.text}`;
-      removeButton.textContent = "x";
-      removeButton.addEventListener("click", () => {
-        state = removeItem(state, item.id);
-        saveState();
-        render();
-      });
-
-      row.append(checkbox, label, removeButton);
-      elements.itemList.append(row);
-    });
+      state = { ...state, countdownIndex: nextIndex };
+      render();
+    }, 1000);
   }
 
   function render() {
-    document.title = `${state.appName} App Template`;
-    elements.title.textContent = state.appName;
-    elements.appNameInput.value = state.appName;
-    elements.themeSelect.value = state.theme;
-    elements.itemCount.textContent = String(state.items.length);
-    applyTheme();
-    renderItems();
-  }
+    const screens = [
+      elements.menuScreen,
+      elements.nameScreen,
+      elements.countdownScreen,
+      elements.raceScreen,
+    ];
 
-  function updateCurrentNavLink() {
-    const currentHash = window.location.hash || "#overview";
-    elements.navLinks.forEach((link) => {
-      link.setAttribute("aria-current", link.getAttribute("href") === currentHash ? "page" : "false");
+    screens.forEach((screen) => {
+      screen.hidden = screen.dataset.screen !== state.screen;
     });
+
+    document.title = state.screen === "race" ? `${state.playerName} Racing` : "Nitro Rush";
+    elements.title.textContent = "Nitro Rush";
+    elements.countdownNumber.textContent = getCountdownValue(state.countdownIndex);
+    elements.racerName.textContent = state.playerName;
+    elements.raceCar.classList.toggle("is-racing", state.screen === "race");
+
+    if (state.screen === "name") {
+      elements.nameInput.focus();
+    }
   }
 
-  elements.itemForm.addEventListener("submit", (event) => {
+  elements.playButton.addEventListener("click", () => {
+    setScreen("name");
+  });
+
+  elements.nameForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    const text = elements.itemInput.value.trim();
-    if (!text) return;
-    state = addItem(state, text);
-    saveState();
-    render();
-    elements.itemInput.value = "";
-    elements.itemInput.focus();
+
+    const playerName = normalizePlayerName(elements.nameInput.value);
+    if (!playerName) {
+      elements.nameError.textContent = "Enter racer name.";
+      elements.nameInput.focus();
+      return;
+    }
+
+    elements.nameError.textContent = "";
+    state = { ...state, playerName };
+    startCountdown();
   });
 
-  elements.clearItemsButton.addEventListener("click", () => {
-    state = clearDoneItems(state);
-    saveState();
+  elements.restartButton.addEventListener("click", () => {
+    stopCountdown();
+    state = createInitialState();
+    elements.nameInput.value = "";
+    elements.nameError.textContent = "";
     render();
   });
-
-  elements.appNameInput.addEventListener("input", () => {
-    state = { ...state, appName: elements.appNameInput.value.trim() || "Cordia" };
-    saveState();
-    render();
-  });
-
-  elements.themeSelect.addEventListener("change", () => {
-    state = { ...state, theme: elements.themeSelect.value as Theme };
-    saveState();
-    render();
-  });
-
-  window.addEventListener("hashchange", updateCurrentNavLink);
 
   render();
-  updateCurrentNavLink();
 }
 
 if (typeof document !== "undefined") {

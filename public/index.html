@@ -4,11 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light dark">
-    <meta
-      name="description"
-      content="A small browser-only web application template ready for Cloudflare Pages."
-    >
-    <title>Cordia App Template</title>
+    <meta name="description" content="A fast browser racing game with a name entry and countdown start.">
+    <title>Nitro Rush</title>
     <link rel="author" href="/humans.txt" type="text/plain">
     <link rel="alternate" href="/llm.txt" type="text/plain" title="LLM-readable site information">
     <link rel="stylesheet" href="/global.css">
@@ -21,125 +18,82 @@
     <div class="app-shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Browser app template</p>
-          <h1>Cordia</h1>
+          <p class="eyebrow">Street sprint</p>
+          <h1>Nitro Rush</h1>
         </div>
-        <nav class="nav" aria-label="Primary">
-          <a href="#overview" aria-current="page">Overview</a>
-          <a href="#workspace">Workspace</a>
-          <a href="#settings">Settings</a>
-        </nav>
       </header>
 
-      <main id="main">
-        <section class="hero" id="overview" aria-labelledby="hero-title">
-          <div class="hero-copy">
-            <p class="eyebrow">Cloudflare-ready static starter</p>
-            <h2 id="hero-title">A clean starting point for browser-only apps.</h2>
-            <p>
-              Customize the data model, views, and actions without introducing a
-              build pipeline. State is local by default, markup stays plain, and
-              assets live in one deployable folder.
-            </p>
-            <div class="hero-actions">
-              <a class="button primary" href="#workspace">Open workspace</a>
-              <a class="button secondary" href="#settings">Edit settings</a>
-            </div>
+      <main id="main" class="race-app" aria-live="polite">
+        <section class="screen menu-screen" id="menu-screen" data-screen="menu" aria-labelledby="menu-title">
+          <div class="screen-copy">
+            <p class="eyebrow">Ready line</p>
+            <h2 id="menu-title">Midnight drag race.</h2>
+            <p>Launch from the start line, catch the green, and tear down the strip.</p>
+            <button class="button primary" id="play-now" type="button">Play now</button>
           </div>
-          <div class="status-panel" aria-label="Application status">
-            <div>
-              <span class="status-dot" aria-hidden="true"></span>
-              <span>Ready for customization</span>
-            </div>
-            <strong id="item-count">0</strong>
-            <span>saved items</span>
+          <div class="track-preview" aria-hidden="true">
+            <span class="track-lane"></span>
+            <span class="track-lane"></span>
+            <span class="track-lane"></span>
+            <span class="preview-car"></span>
           </div>
         </section>
 
-        <section class="section-grid" id="workspace" aria-labelledby="workspace-title">
-          <div class="panel workspace-panel">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Workspace</p>
-                <h2 id="workspace-title">Starter list</h2>
-              </div>
-              <button class="button secondary" id="clear-items" type="button">Clear done</button>
-            </div>
-
-            <form class="item-form" id="item-form">
-              <label for="item-input">New item</label>
+        <section class="screen name-screen" id="name-screen" data-screen="name" aria-labelledby="name-title" hidden>
+          <div class="screen-copy narrow">
+            <p class="eyebrow">Driver check</p>
+            <h2 id="name-title">Enter racer name.</h2>
+            <form class="name-form" id="name-form">
+              <label for="player-name">Racer name</label>
               <div class="input-row">
                 <input
-                  id="item-input"
-                  name="item"
+                  id="player-name"
+                  name="player-name"
                   type="text"
-                  autocomplete="off"
-                  maxlength="80"
-                  placeholder="Add a task, note, or placeholder record"
-                  required
+                  autocomplete="nickname"
+                  maxlength="24"
+                  placeholder="Speedster"
                 >
-                <button class="button primary" type="submit">Add</button>
+                <button class="button primary" type="submit">Start</button>
               </div>
+              <p class="form-error" id="name-error" role="alert"></p>
             </form>
-
-            <ul class="item-list" id="item-list" aria-live="polite"></ul>
           </div>
-
-          <aside class="panel" aria-labelledby="snapshot-title">
-            <p class="eyebrow">Snapshot</p>
-            <h2 id="snapshot-title">Template pieces</h2>
-            <dl class="stat-list">
-              <div>
-                <dt>Runtime</dt>
-                <dd>Browser only</dd>
-              </div>
-              <div>
-                <dt>Deploy folder</dt>
-                <dd><code>public</code></dd>
-              </div>
-              <div>
-                <dt>Styles</dt>
-                <dd><code>global.css</code></dd>
-              </div>
-              <div>
-                <dt>Script</dt>
-                <dd><code>app.js</code></dd>
-              </div>
-            </dl>
-          </aside>
         </section>
 
-        <section class="panel settings-panel" id="settings" aria-labelledby="settings-title">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Settings</p>
-              <h2 id="settings-title">App preferences</h2>
-            </div>
-            <span class="save-state" id="save-state" role="status">Saved locally</span>
+        <section
+          class="screen countdown-screen"
+          id="countdown-screen"
+          data-screen="countdown"
+          aria-labelledby="countdown-title"
+          hidden
+        >
+          <div class="countdown-panel">
+            <p class="eyebrow" id="countdown-title">Race starts in</p>
+            <strong id="countdown-number">3</strong>
           </div>
+        </section>
 
-          <div class="settings-grid">
-            <label class="field">
-              <span>App name</span>
-              <input id="app-name" type="text" maxlength="32" value="Cordia">
-            </label>
-
-            <label class="field">
-              <span>Theme</span>
-              <select id="theme-select">
-                <option value="system">System</option>
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-              </select>
-            </label>
+        <section class="screen race-screen" id="race-screen" data-screen="race" aria-labelledby="race-title" hidden>
+          <div class="race-header">
+            <div>
+              <p class="eyebrow">Race live</p>
+              <h2 id="race-title"><span id="racer-name"></span> is racing.</h2>
+            </div>
+            <button class="button secondary" id="restart-race" type="button">Main menu</button>
+          </div>
+          <div class="race-track" aria-label="Race track">
+            <div class="finish-line" aria-hidden="true"></div>
+            <div class="lane-markers" aria-hidden="true"></div>
+            <div class="car" id="race-car" aria-label="Racing car">
+              <span class="car-body"></span>
+              <span class="car-cabin"></span>
+              <span class="wheel front"></span>
+              <span class="wheel rear"></span>
+            </div>
           </div>
         </section>
       </main>
-
-      <footer class="site-footer">
-        <span>Created by <a href="https://cordia.molten.bot">cordia.molten.bot</a>.</span>
-        <a href="https://molten.bot">molten.bot</a>
-      </footer>
     </div>
   </body>
 </html>
