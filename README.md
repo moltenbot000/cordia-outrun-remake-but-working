@@ -25,7 +25,13 @@ Then open `http://localhost:4173`.
 
 ## Deploy on Cloudflare Pages
 
-Use these project settings:
+Deploy with Wrangler:
+
+```sh
+npm run deploy
+```
+
+Or use these project settings in the Cloudflare Pages dashboard:
 
 - Build command: `npm run build`
 - Build output directory: `public`
