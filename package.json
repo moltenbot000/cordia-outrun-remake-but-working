@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "deploy": "npm run build && wrangler pages deploy public --project-name cordia-web-blank",
     "lint": "tsc --noEmit",
     "test": "npm run build && node --test tests/*.test.mjs"
   },
   "devDependencies": {
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "wrangler": "^4.95.0"
   }
 }
