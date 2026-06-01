@@ -4,6 +4,8 @@ const googleAnalyticsId = "G-ZKTPLMMFDQ";
 const maxSpeed = 218;
 const laneCenters = [-0.62, 0, 0.62];
 const carColors = ["#ff3b3b", "#ffd43b", "#3fd5ff", "#8cff5a", "#f65dff"];
+const carSpritePath = "/assets/car-sprites.png";
+const carSpriteCount = 6;
 function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
 }
@@ -141,6 +143,79 @@ function drawCar(context, x, y, width, height, color) {
     context.fillRect(x - width * 0.34, y + height * 0.15, width * 0.15, height * 0.09);
     context.fillRect(x + width * 0.19, y + height * 0.15, width * 0.15, height * 0.09);
 }
+function getCarSpriteIndex(color) {
+    const colorIndex = carColors.findIndex((carColor) => carColor === color);
+    return colorIndex >= 0 ? colorIndex + 1 : 0;
+}
+function drawCarSprite(context, spriteSheet, spriteIndex, x, y, width, height, fallbackColor) {
+    if (spriteSheet?.complete && spriteSheet.naturalWidth > 0) {
+        const spriteWidth = spriteSheet.naturalWidth / carSpriteCount;
+        context.imageSmoothingEnabled = false;
+        context.drawImage(spriteSheet, spriteWidth * spriteIndex, 0, spriteWidth, spriteSheet.naturalHeight, x - width / 2, y - height / 2, width, height);
+        context.imageSmoothingEnabled = true;
+        return;
+    }
+    drawCar(context, x, y, width, height, fallbackColor);
+}
+function drawCrashEffect(context, x, y, size, intensity, visualTime, wrecked) {
+    const clampedIntensity = clamp(intensity, 0, 1);
+    const blast = size * (0.58 + clampedIntensity * 0.5);
+    const smoke = size * (0.4 + (1 - clampedIntensity) * 0.55);
+    context.save();
+    context.globalCompositeOperation = "lighter";
+    const glow = context.createRadialGradient(x, y, size * 0.08, x, y, blast);
+    glow.addColorStop(0, `rgb(255 255 198 / ${wrecked ? 0.9 : 0.78 * clampedIntensity})`);
+    glow.addColorStop(0.35, `rgb(255 85 0 / ${wrecked ? 0.72 : 0.7 * clampedIntensity})`);
+    glow.addColorStop(1, "rgb(255 0 0 / 0)");
+    context.fillStyle = glow;
+    context.beginPath();
+    context.arc(x, y, blast, 0, Math.PI * 2);
+    context.fill();
+    for (let index = 0; index < 9; index += 1) {
+        const angle = visualTime * 7 + index * 0.72;
+        const flameHeight = size * (0.28 + (index % 3) * 0.08 + clampedIntensity * 0.42);
+        const flameWidth = size * (0.1 + (index % 2) * 0.04);
+        const flameX = x + Math.cos(angle) * size * 0.2;
+        const flameY = y + Math.sin(angle * 1.4) * size * 0.16 - size * 0.12;
+        context.fillStyle = index % 2 === 0 ? "#ff3b00" : "#ffe45e";
+        context.beginPath();
+        context.moveTo(flameX, flameY - flameHeight);
+        context.lineTo(flameX - flameWidth, flameY + flameHeight * 0.28);
+        context.lineTo(flameX + flameWidth, flameY + flameHeight * 0.22);
+        context.closePath();
+        context.fill();
+    }
+    context.restore();
+    context.save();
+    context.globalAlpha = wrecked ? 0.74 : 0.7 * (1 - clampedIntensity);
+    context.fillStyle = "#1b1024";
+    for (let index = 0; index < 7; index += 1) {
+        const drift = visualTime * (0.35 + index * 0.03);
+        const smokeX = x + Math.cos(index * 1.8 + drift) * smoke * 0.42;
+        const smokeY = y - smoke * 0.58 - index * smoke * 0.08 + Math.sin(drift) * smoke * 0.12;
+        context.beginPath();
+        context.ellipse(smokeX, smokeY, smoke * (0.18 + index * 0.025), smoke * 0.16, 0, 0, Math.PI * 2);
+        context.fill();
+    }
+    context.restore();
+    context.save();
+    context.fillStyle = "#ffb443";
+    context.strokeStyle = "#12002b";
+    context.lineWidth = Math.max(1, size * 0.015);
+    for (let index = 0; index < 10; index += 1) {
+        const angle = index * 0.68 + visualTime * 3.2;
+        const radius = size * (0.24 + clampedIntensity * 0.42);
+        const debrisX = x + Math.cos(angle) * radius;
+        const debrisY = y + Math.sin(angle) * radius * 0.55;
+        context.save();
+        context.translate(debrisX, debrisY);
+        context.rotate(angle);
+        context.fillRect(-size * 0.025, -size * 0.01, size * 0.05, size * 0.02);
+        context.strokeRect(-size * 0.025, -size * 0.01, size * 0.05, size * 0.02);
+        context.restore();
+    }
+    context.restore();
+}
 function drawPalmTree(context, x, y, size) {
     const trunkHeight = size * 4.2;
     const trunkWidth = Math.max(3, size * 0.32);
@@ -208,7 +283,7 @@ function drawLandmarks(context, width, horizon, roadBottom, center, curveShift, 
         }
     }
 }
-function renderRace(context, canvas, state) {
+function renderRace(context, canvas, state, spriteSheet, visualTime = state.time) {
     const width = canvas.width;
     const height = canvas.height;
     const horizon = height * 0.38;
@@ -277,9 +352,16 @@ function renderRace(context, canvas, state) {
         const y = horizon + (roadBottom - horizon) * perspective;
         const x = center + curveShift * (1 - car.y) + car.lane * roadWidth * 0.42 - state.curve * width * 0.11;
         const carWidth = width * (0.035 + perspective * 0.09);
-        drawCar(context, x, y, carWidth, carWidth * 1.55, car.color);
+        drawCarSprite(context, spriteSheet, getCarSpriteIndex(car.color), x, y, carWidth, carWidth * 1.42, car.color);
     });
-    drawCar(context, center + state.position * width * 0.26, height * 0.83, width * 0.17, width * 0.18, "#24f0ff");
+    const playerX = center + state.position * width * 0.26;
+    const playerY = height * 0.83;
+    const playerWidth = width * 0.17;
+    drawCarSprite(context, spriteSheet, 0, playerX, playerY, playerWidth, playerWidth * 1.18, "#24f0ff");
+    if (state.collisionCooldown > 0 || state.damage >= 100) {
+        const collisionIntensity = state.damage >= 100 ? 1 : state.collisionCooldown / 0.8;
+        drawCrashEffect(context, playerX, playerY - playerWidth * 0.08, playerWidth, collisionIntensity, visualTime, state.damage >= 100);
+    }
 }
 function initializeApp() {
     initializeGoogleAnalytics();
@@ -296,6 +378,12 @@ function initializeApp() {
     let countdownTimer;
     let fullScreenActive = false;
     let lastFrame = performance.now();
+    let carSpriteSheet;
+    if (typeof Image !== "undefined") {
+        carSpriteSheet = new Image();
+        carSpriteSheet.addEventListener("load", () => resizeCanvas());
+        carSpriteSheet.src = carSpritePath;
+    }
     function clearInput() {
         input.left = false;
         input.right = false;
@@ -360,7 +448,7 @@ function initializeApp() {
         elements.canvas.width = Math.floor(width * ratio);
         elements.canvas.height = Math.floor(height * ratio);
         renderingContext.setTransform(1, 0, 0, 1, 0, 0);
-        renderRace(renderingContext, elements.canvas, state);
+        renderRace(renderingContext, elements.canvas, state, carSpriteSheet, performance.now() / 1000);
     }
     function setInput(key, value) {
         const keyMap = {
@@ -446,7 +534,7 @@ function initializeApp() {
             phase = "paused";
             clearInput();
         }
-        renderRace(renderingContext, elements.canvas, state);
+        renderRace(renderingContext, elements.canvas, state, carSpriteSheet, now / 1000);
         renderStats();
         requestAnimationFrame(frame);
     }
