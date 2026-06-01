@@ -24,11 +24,12 @@
 html,
 body {
   min-width: 320px;
-  min-height: 100%;
+  height: 100%;
   margin: 0;
 }
 
 body {
+  overflow: hidden;
   color: var(--text);
   background:
     linear-gradient(180deg, rgb(255 47 147 / 16%), transparent 42%),
@@ -56,31 +57,38 @@ button {
 }
 
 .arcade-shell {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
-  gap: 1rem;
-  width: min(1280px, calc(100% - 2rem));
+  gap: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
+  min-height: 100dvh;
   margin: 0 auto;
-  padding: 1rem 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 .race-stage,
 .dashboard {
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 0;
   background: rgb(16 8 28 / 84%);
   box-shadow: var(--shadow);
 }
 
 .race-stage {
   display: grid;
-  grid-template-rows: auto minmax(360px, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   position: relative;
 }
 
 .cabinet-header {
+  position: relative;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -149,8 +157,9 @@ h2 {
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 460px;
+  min-height: 0;
   background: #12002b;
+  touch-action: none;
 }
 
 .screen-layer {
@@ -223,6 +232,12 @@ h2 {
 .dashboard {
   align-self: stretch;
   padding: clamp(1rem, 2.5vw, 1.5rem);
+  overflow: auto;
+  transition:
+    width 180ms ease,
+    padding 180ms ease,
+    background 180ms ease,
+    transform 180ms ease;
 }
 
 .stat-grid {
@@ -292,35 +307,161 @@ h2 {
   grid-column: 2;
 }
 
+.touch-controls {
+  position: absolute;
+  right: max(0.75rem, env(safe-area-inset-right));
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+  left: max(0.75rem, env(safe-area-inset-left));
+  z-index: 3;
+  display: none;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.touch-button {
+  min-height: 3.7rem;
+  border: 1px solid rgb(255 255 255 / 42%);
+  border-radius: var(--radius);
+  background: rgb(9 0 20 / 72%);
+  color: var(--text);
+  font-weight: 950;
+  touch-action: none;
+  pointer-events: auto;
+  backdrop-filter: blur(6px);
+}
+
+.touch-button.go {
+  border-color: var(--yellow);
+  background: rgb(255 47 147 / 78%);
+}
+
+.touch-button:active {
+  transform: translateY(1px);
+  background: rgb(35 231 255 / 36%);
+}
+
+.arcade-shell.is-fullscreen {
+  grid-template-columns: 1fr;
+}
+
+.arcade-shell.is-fullscreen .race-stage {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.arcade-shell.is-fullscreen .dashboard {
+  position: absolute;
+  top: max(0.75rem, env(safe-area-inset-top));
+  right: max(0.75rem, env(safe-area-inset-right));
+  z-index: 4;
+  width: min(24rem, calc(100% - 1.5rem));
+  max-height: calc(100vh - 1.5rem);
+  max-height: calc(100dvh - 1.5rem);
+  padding: 0.75rem;
+  border-radius: var(--radius);
+  background: rgb(9 0 20 / 68%);
+  backdrop-filter: blur(8px);
+}
+
+.arcade-shell.is-fullscreen .dashboard .eyebrow,
+.arcade-shell.is-fullscreen .dashboard h2,
+.arcade-shell.is-fullscreen .controls-panel {
+  display: none;
+}
+
+.arcade-shell.is-fullscreen .stat-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 0;
+}
+
+.arcade-shell.is-fullscreen .stat-grid div {
+  min-height: 0;
+  padding: 0.55rem;
+}
+
+.arcade-shell.is-fullscreen .stat-grid dd {
+  font-size: clamp(1rem, 2.4vw, 1.45rem);
+}
+
 @media (max-width: 920px) {
   .arcade-shell {
     grid-template-columns: 1fr;
   }
 
   .dashboard {
+    position: absolute;
+    right: max(0.5rem, env(safe-area-inset-right));
+    bottom: calc(5.1rem + env(safe-area-inset-bottom));
+    left: max(0.5rem, env(safe-area-inset-left));
+    z-index: 4;
     align-self: auto;
+    max-height: 36vh;
+    padding: 0.6rem;
+    border-radius: var(--radius);
+    background: rgb(9 0 20 / 68%);
+    backdrop-filter: blur(8px);
+  }
+
+  .dashboard .eyebrow,
+  .dashboard h2,
+  .controls-panel {
+    display: none;
   }
 
   .stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.45rem;
+    margin: 0;
+  }
+
+  .stat-grid div {
+    min-height: 0;
+    padding: 0.55rem;
+  }
+
+  .stat-grid dt {
+    font-size: 0.64rem;
+  }
+
+  .stat-grid dd {
+    font-size: clamp(0.95rem, 3.7vw, 1.35rem);
+  }
+
+  .touch-controls {
+    display: grid;
   }
 }
 
 @media (max-width: 620px) {
-  .arcade-shell {
-    width: min(100% - 1rem, 1280px);
-  }
-
   .cabinet-header {
     align-items: stretch;
     flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
   }
 
-  #race-canvas {
-    min-height: 390px;
+  h1 {
+    font-size: clamp(1.8rem, 10vw, 3rem);
+  }
+
+  .button-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .stat-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .arcade-shell.is-fullscreen .stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .control-button,
+  .touch-button {
+    padding-right: 0.45rem;
+    padding-left: 0.45rem;
   }
 }

@@ -103,6 +103,7 @@ function getElement(selector, type) {
 }
 function getElements() {
     return {
+        gameShell: getElement("#game", HTMLElement),
         canvas: getElement("#race-canvas", HTMLCanvasElement),
         screenLayer: getElement("#screen-layer", HTMLElement),
         menuScreen: getElement("#menu-screen", HTMLElement),
@@ -118,7 +119,9 @@ function getElements() {
         scoreValue: getElement("#score-value", HTMLElement),
         startButton: getElement("#start-race", HTMLButtonElement),
         pauseButton: getElement("#pause-race", HTMLButtonElement),
+        fullScreenButton: getElement("#full-screen", HTMLButtonElement),
         statusText: getElement("#status-text", HTMLElement),
+        touchButtons: Array.from(document.querySelectorAll("[data-touch-key]")),
     };
 }
 function drawCar(context, x, y, width, height, color) {
@@ -291,6 +294,7 @@ function initializeApp() {
     let phase = "menu";
     let driverName = "";
     let countdownTimer;
+    let fullScreenActive = false;
     let lastFrame = performance.now();
     function clearInput() {
         input.left = false;
@@ -379,6 +383,31 @@ function initializeApp() {
             input[inputKey] = value;
         }
     }
+    function updateFullScreenState(active) {
+        fullScreenActive = active;
+        elements.gameShell.classList.toggle("is-fullscreen", active);
+        elements.fullScreenButton.setAttribute("aria-pressed", String(active));
+        elements.fullScreenButton.textContent = active ? "Exit Full" : "Full Screen";
+        resizeCanvas();
+    }
+    async function toggleFullScreen() {
+        const nextActive = !fullScreenActive;
+        updateFullScreenState(nextActive);
+        if (!document.fullscreenEnabled) {
+            return;
+        }
+        try {
+            if (nextActive && !document.fullscreenElement) {
+                await elements.gameShell.requestFullscreen();
+            }
+            else if (!nextActive && document.fullscreenElement) {
+                await document.exitFullscreen();
+            }
+        }
+        catch {
+            updateFullScreenState(nextActive);
+        }
+    }
     function renderStats() {
         elements.speedValue.textContent = `${Math.round(state.speed)} mph`;
         elements.damageValue.textContent = `${Math.round(state.damage)}%`;
@@ -451,6 +480,29 @@ function initializeApp() {
             lastFrame = performance.now();
             elements.pauseButton.textContent = "Pause";
         }
+    });
+    elements.fullScreenButton.addEventListener("click", () => {
+        void toggleFullScreen();
+    });
+    document.addEventListener("fullscreenchange", () => {
+        updateFullScreenState(document.fullscreenElement === elements.gameShell);
+    });
+    elements.touchButtons.forEach((button) => {
+        const inputKey = button.dataset.touchKey;
+        if (!inputKey) {
+            return;
+        }
+        const setTouchInput = (value) => {
+            input[inputKey] = value;
+        };
+        button.addEventListener("pointerdown", (event) => {
+            event.preventDefault();
+            button.setPointerCapture(event.pointerId);
+            setTouchInput(true);
+        });
+        button.addEventListener("pointerup", () => setTouchInput(false));
+        button.addEventListener("pointercancel", () => setTouchInput(false));
+        button.addEventListener("lostpointercapture", () => setTouchInput(false));
     });
     window.addEventListener("keydown", (event) => {
         if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "].includes(event.key)) {

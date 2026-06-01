@@ -37,6 +37,7 @@ const laneCenters = [-0.62, 0, 0.62] as const;
 const carColors = ["#ff3b3b", "#ffd43b", "#3fd5ff", "#8cff5a", "#f65dff"] as const;
 
 interface AppElements {
+  gameShell: HTMLElement;
   canvas: HTMLCanvasElement;
   screenLayer: HTMLElement;
   menuScreen: HTMLElement;
@@ -52,7 +53,9 @@ interface AppElements {
   scoreValue: HTMLElement;
   startButton: HTMLButtonElement;
   pauseButton: HTMLButtonElement;
+  fullScreenButton: HTMLButtonElement;
   statusText: HTMLElement;
+  touchButtons: HTMLButtonElement[];
 }
 
 declare global {
@@ -177,6 +180,7 @@ function getElement<T extends Element>(selector: string, type: { new (): T }): T
 
 function getElements(): AppElements {
   return {
+    gameShell: getElement("#game", HTMLElement),
     canvas: getElement("#race-canvas", HTMLCanvasElement),
     screenLayer: getElement("#screen-layer", HTMLElement),
     menuScreen: getElement("#menu-screen", HTMLElement),
@@ -192,7 +196,9 @@ function getElements(): AppElements {
     scoreValue: getElement("#score-value", HTMLElement),
     startButton: getElement("#start-race", HTMLButtonElement),
     pauseButton: getElement("#pause-race", HTMLButtonElement),
+    fullScreenButton: getElement("#full-screen", HTMLButtonElement),
     statusText: getElement("#status-text", HTMLElement),
+    touchButtons: Array.from(document.querySelectorAll<HTMLButtonElement>("[data-touch-key]")),
   };
 }
 
@@ -411,6 +417,7 @@ function initializeApp() {
   let phase: AppPhase = "menu";
   let driverName = "";
   let countdownTimer: number | undefined;
+  let fullScreenActive = false;
   let lastFrame = performance.now();
 
   function clearInput() {
@@ -510,6 +517,33 @@ function initializeApp() {
     }
   }
 
+  function updateFullScreenState(active: boolean) {
+    fullScreenActive = active;
+    elements.gameShell.classList.toggle("is-fullscreen", active);
+    elements.fullScreenButton.setAttribute("aria-pressed", String(active));
+    elements.fullScreenButton.textContent = active ? "Exit Full" : "Full Screen";
+    resizeCanvas();
+  }
+
+  async function toggleFullScreen() {
+    const nextActive = !fullScreenActive;
+    updateFullScreenState(nextActive);
+
+    if (!document.fullscreenEnabled) {
+      return;
+    }
+
+    try {
+      if (nextActive && !document.fullscreenElement) {
+        await elements.gameShell.requestFullscreen();
+      } else if (!nextActive && document.fullscreenElement) {
+        await document.exitFullscreen();
+      }
+    } catch {
+      updateFullScreenState(nextActive);
+    }
+  }
+
   function renderStats() {
     elements.speedValue.textContent = `${Math.round(state.speed)} mph`;
     elements.damageValue.textContent = `${Math.round(state.damage)}%`;
@@ -593,6 +627,34 @@ function initializeApp() {
       lastFrame = performance.now();
       elements.pauseButton.textContent = "Pause";
     }
+  });
+
+  elements.fullScreenButton.addEventListener("click", () => {
+    void toggleFullScreen();
+  });
+
+  document.addEventListener("fullscreenchange", () => {
+    updateFullScreenState(document.fullscreenElement === elements.gameShell);
+  });
+
+  elements.touchButtons.forEach((button) => {
+    const inputKey = button.dataset.touchKey as InputKey | undefined;
+    if (!inputKey) {
+      return;
+    }
+
+    const setTouchInput = (value: boolean) => {
+      input[inputKey] = value;
+    };
+
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      button.setPointerCapture(event.pointerId);
+      setTouchInput(true);
+    });
+    button.addEventListener("pointerup", () => setTouchInput(false));
+    button.addEventListener("pointercancel", () => setTouchInput(false));
+    button.addEventListener("lostpointercapture", () => setTouchInput(false));
   });
 
   window.addEventListener("keydown", (event) => {
