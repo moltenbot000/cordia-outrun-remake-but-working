@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createInitialRaceState, stepRace } from "../public/app.js";
+import {
+  createInitialRaceState,
+  getCarTurnRotation,
+  getOpponentPerspective,
+  stepRace,
+} from "../public/app.js";
 
 const idleInput = {
   left: false,
@@ -16,6 +21,7 @@ test("createInitialRaceState starts race with traffic and clean car", () => {
   assert.equal(state.speed, 0);
   assert.equal(state.damage, 0);
   assert.equal(state.position, 0);
+  assert.equal(state.turn, 0);
   assert.equal(state.opponents.length, 3);
 });
 
@@ -45,4 +51,21 @@ test("stepRace applies damage on opponent collision", () => {
 
   assert.equal(next.damage, 18);
   assert.ok(next.collisionCooldown > 0);
+});
+
+test("stepRace banks the car into turns", () => {
+  const state = createInitialRaceState();
+  const next = stepRace(state, { ...idleInput, right: true }, 0.05);
+
+  assert.ok(next.turn > state.turn);
+  assert.ok(getCarTurnRotation(next.turn) > 0);
+});
+
+test("opponent perspective grows with proximity and speed pressure", () => {
+  const far = getOpponentPerspective(0.25, 40);
+  const nearSlow = getOpponentPerspective(0.85, 40);
+  const nearFast = getOpponentPerspective(0.85, 210);
+
+  assert.ok(nearSlow > far);
+  assert.ok(nearFast > nearSlow);
 });
