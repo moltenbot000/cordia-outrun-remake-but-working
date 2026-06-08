@@ -29,6 +29,7 @@ export function createInitialRaceState() {
         score: 0,
         time: 0,
         curve: 0,
+        turn: 0,
         collisionCooldown: 0,
         opponents: [
             { id: 1, lane: -0.62, y: -0.2, color: "#ff3b3b", passed: false },
@@ -47,6 +48,8 @@ export function stepRace(state, input, deltaSeconds) {
     const position = clamp(state.position + steer * (0.95 + speed / maxSpeed) * dt, -1, 1);
     const distance = state.distance + speed * dt * 0.42;
     const curve = Math.sin(distance / 150) * 0.38 + Math.sin(distance / 410) * 0.2;
+    const targetTurn = clamp(steer * 0.95 - curve * 0.28, -1, 1);
+    const turn = state.turn + (targetTurn - state.turn) * clamp(dt * 10, 0, 1);
     let damage = state.damage;
     let score = state.score + Math.floor(speed * dt * 4);
     let collisionCooldown = Math.max(0, state.collisionCooldown - dt);
@@ -80,9 +83,19 @@ export function stepRace(state, input, deltaSeconds) {
         score,
         time: state.time + dt,
         curve,
+        turn,
         collisionCooldown,
         opponents,
     };
+}
+export function getOpponentPerspective(proximity, speed) {
+    const baseProximity = clamp(proximity, -0.08, 1.16);
+    const basePerspective = Math.max(0, baseProximity) ** 2;
+    const speedPressure = clamp(speed / maxSpeed, 0, 1) * 0.16 * clamp(baseProximity, 0, 1);
+    return clamp(basePerspective + speedPressure, 0, 1.42);
+}
+export function getCarTurnRotation(turn) {
+    return clamp(turn, -1, 1) * 0.24;
 }
 function initializeGoogleAnalytics() {
     const googleTagScript = document.createElement("script");
@@ -147,20 +160,25 @@ function getCarSpriteIndex(color) {
     const colorIndex = carColors.findIndex((carColor) => carColor === color);
     return colorIndex >= 0 ? colorIndex + 1 : 0;
 }
-function drawCarSprite(context, spriteSheet, spriteIndex, x, y, width, height, fallbackColor) {
+function drawCarSprite(context, spriteSheet, spriteIndex, x, y, width, height, fallbackColor, rotation = 0) {
+    context.save();
+    context.translate(x, y);
+    context.rotate(rotation);
     if (spriteSheet?.complete && spriteSheet.naturalWidth > 0) {
         const spriteWidth = spriteSheet.naturalWidth / carSpriteCount;
         context.imageSmoothingEnabled = false;
-        context.drawImage(spriteSheet, spriteWidth * spriteIndex, 0, spriteWidth, spriteSheet.naturalHeight, x - width / 2, y - height / 2, width, height);
+        context.drawImage(spriteSheet, spriteWidth * spriteIndex, 0, spriteWidth, spriteSheet.naturalHeight, -width / 2, -height / 2, width, height);
         context.imageSmoothingEnabled = true;
+        context.restore();
         return;
     }
-    drawCar(context, x, y, width, height, fallbackColor);
+    drawCar(context, 0, 0, width, height, fallbackColor);
+    context.restore();
 }
 function drawCrashEffect(context, x, y, size, intensity, visualTime, wrecked) {
     const clampedIntensity = clamp(intensity, 0, 1);
-    const blast = size * (0.58 + clampedIntensity * 0.5);
-    const smoke = size * (0.4 + (1 - clampedIntensity) * 0.55);
+    const blast = size * (0.72 + clampedIntensity * 0.82);
+    const smoke = size * (0.55 + (1 - clampedIntensity) * 0.7);
     context.save();
     context.globalCompositeOperation = "lighter";
     const glow = context.createRadialGradient(x, y, size * 0.08, x, y, blast);
@@ -171,7 +189,7 @@ function drawCrashEffect(context, x, y, size, intensity, visualTime, wrecked) {
     context.beginPath();
     context.arc(x, y, blast, 0, Math.PI * 2);
     context.fill();
-    for (let index = 0; index < 9; index += 1) {
+    for (let index = 0; index < 13; index += 1) {
         const angle = visualTime * 7 + index * 0.72;
         const flameHeight = size * (0.28 + (index % 3) * 0.08 + clampedIntensity * 0.42);
         const flameWidth = size * (0.1 + (index % 2) * 0.04);
@@ -184,6 +202,20 @@ function drawCrashEffect(context, x, y, size, intensity, visualTime, wrecked) {
         context.lineTo(flameX + flameWidth, flameY + flameHeight * 0.22);
         context.closePath();
         context.fill();
+    }
+    context.restore();
+    context.save();
+    context.globalCompositeOperation = "lighter";
+    context.strokeStyle = "#fff7a6";
+    context.lineWidth = Math.max(2, size * 0.018);
+    for (let index = 0; index < 6; index += 1) {
+        const angle = index * 1.05 + visualTime * 4.5;
+        const inner = size * (0.12 + clampedIntensity * 0.08);
+        const outer = size * (0.62 + clampedIntensity * 0.7);
+        context.beginPath();
+        context.moveTo(x + Math.cos(angle) * inner, y + Math.sin(angle) * inner * 0.7);
+        context.lineTo(x + Math.cos(angle) * outer, y + Math.sin(angle) * outer * 0.7);
+        context.stroke();
     }
     context.restore();
     context.save();
@@ -202,9 +234,9 @@ function drawCrashEffect(context, x, y, size, intensity, visualTime, wrecked) {
     context.fillStyle = "#ffb443";
     context.strokeStyle = "#12002b";
     context.lineWidth = Math.max(1, size * 0.015);
-    for (let index = 0; index < 10; index += 1) {
+    for (let index = 0; index < 16; index += 1) {
         const angle = index * 0.68 + visualTime * 3.2;
-        const radius = size * (0.24 + clampedIntensity * 0.42);
+        const radius = size * (0.28 + clampedIntensity * 0.68);
         const debrisX = x + Math.cos(angle) * radius;
         const debrisY = y + Math.sin(angle) * radius * 0.55;
         context.save();
@@ -347,17 +379,18 @@ function renderRace(context, canvas, state, spriteSheet, visualTime = state.time
         .filter((car) => car.y > -0.1 && car.y < 1.12)
         .sort((a, b) => a.y - b.y)
         .forEach((car) => {
-        const perspective = car.y * car.y;
+        const perspective = getOpponentPerspective(car.y, state.speed);
         const roadWidth = width * (0.08 + perspective * 0.78);
         const y = horizon + (roadBottom - horizon) * perspective;
         const x = center + curveShift * (1 - car.y) + car.lane * roadWidth * 0.42 - state.curve * width * 0.11;
-        const carWidth = width * (0.035 + perspective * 0.09);
-        drawCarSprite(context, spriteSheet, getCarSpriteIndex(car.color), x, y, carWidth, carWidth * 1.42, car.color);
+        const carWidth = width * (0.03 + perspective * 0.116);
+        const turn = getCarTurnRotation(state.curve * 0.72 + car.lane * 0.18);
+        drawCarSprite(context, spriteSheet, getCarSpriteIndex(car.color), x, y, carWidth, carWidth * 1.42, car.color, turn);
     });
     const playerX = center + state.position * width * 0.26;
     const playerY = height * 0.83;
     const playerWidth = width * 0.17;
-    drawCarSprite(context, spriteSheet, 0, playerX, playerY, playerWidth, playerWidth * 1.18, "#24f0ff");
+    drawCarSprite(context, spriteSheet, 0, playerX, playerY, playerWidth, playerWidth * 1.18, "#24f0ff", getCarTurnRotation(state.turn));
     if (state.collisionCooldown > 0 || state.damage >= 100) {
         const collisionIntensity = state.damage >= 100 ? 1 : state.collisionCooldown / 0.8;
         drawCrashEffect(context, playerX, playerY - playerWidth * 0.08, playerWidth, collisionIntensity, visualTime, state.damage >= 100);
